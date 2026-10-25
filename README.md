@@ -1,288 +1,343 @@
 # ORBIT
 
-ORBIT is an interactive event-discovery application that lets people explore events
-from a global Earth view down to real city streets. It starts in space, moves to
-Earth, and then transitions into a detailed local map for **Mumbai, Delhi,
-Bengaluru, or Chennai**.
+ORBIT is a local event-discovery and community platform. It combines an
+interactive CesiumJS globe with an event directory, user accounts, organizer
+tools, participant management, event channels, and permission-controlled
+documents.
 
-The app is intentionally lightweight:
+The application is designed for local development and demonstrations. It
+currently supports events in **Mumbai, Delhi, Bengaluru, and Chennai**. The
+map uses CesiumJS with OpenStreetMap imagery and does not require a Google Maps
+API key, Google Cloud billing account, payment gateway, or Cesium ion token.
 
-- **Backend:** Python and Flask
-- **Frontend:** Plain HTML, CSS, and JavaScript
-- **Rendering:** Canvas and D3 geo utilities
-- **Data:** Natural Earth and OpenStreetMap extracts
-- **Storage:** A local `events.json` file
-- **External services:** No API keys, hosted map services, database, or Node.js required
+> **Important:** ORBIT is not configured for direct public-internet deployment.
+> Review [Security and limitations](#security-and-limitations) before exposing
+> it beyond your local machine.
 
 ## Contents
 
+- [Features](#features)
+- [Technology](#technology)
+- [Project layout](#project-layout)
+- [Requirements](#requirements)
 - [Quick start](#quick-start)
-- [Prepare map data](#prepare-map-data)
-- [Start the application](#start-the-application)
-- [Use ORBIT](#use-orbit)
-- [Create an event](#create-an-event)
-- [Project structure](#project-structure)
-- [How the application works](#how-the-application-works)
-- [Data sources and licensing](#data-sources-and-licensing)
-- [API endpoints](#api-endpoints)
-- [Refresh map data](#refresh-map-data)
+- [Configuration](#configuration)
+- [Using ORBIT](#using-orbit)
+  - [Explore events](#explore-events)
+  - [Create an event](#create-an-event)
+  - [Manage an event](#manage-an-event)
+  - [Join an event](#join-an-event)
+- [Data, migration, and backups](#data-migration-and-backups)
+- [HTTP API](#http-api)
 - [Troubleshooting](#troubleshooting)
-- [Known limitations](#known-limitations)
+- [Security and limitations](#security-and-limitations)
+- [Development notes](#development-notes)
+- [License and attribution](#license-and-attribution)
 
-## Quick start
+## Features
 
-From the project directory, run:
+### Discover events
 
-```bash
-pip install -r requirements.txt
-python prepare_data.py
-python server.py
-```
+- Start on an interactive 3D Earth and enter a supported city.
+- Browse published and cancelled events by city.
+- Search event titles and venues.
+- Filter events by Tech, Music, Art, Food, Sports, or Business.
+- Select an event marker or list item to fly the camera to its location.
+- Display event timing, venue, address, description, requirements, entry type,
+  capacity, registration deadline, organizer contacts, and documents.
+- Support in-person, online, and hybrid events.
 
-Then open [http://127.0.0.1:5000](http://127.0.0.1:5000) in a browser.
+### Accounts and participation
 
-The first two commands install dependencies and download the map data. The
-download requires an internet connection, but ORBIT runs from the prepared local
-files afterward.
+- Register with a username, email address, and password.
+- Sign in with either username or email.
+- Join events and enforce optional capacity limits.
+- Record paid-event participation as pending until an organizer verifies payment.
+- Keep participant and organizer actions behind server-side authorization checks.
 
-### Windows
+### Organizer tools
 
-The Python launcher can be used if `python` is not on `PATH`:
+- Create, edit, publish, cancel, archive, or save event drafts.
+- Add or replace an event banner.
+- Manage organizer contacts with per-field public visibility controls.
+- Create public, organizer-only, or restricted event channels.
+- Mark channels as announcements-only.
+- Grant or revoke restricted-channel membership.
+- Review participants and manually update payment status.
+- Upload public, participant-only, or restricted event documents.
+- View an audit trail of organizer actions in the SQLite database.
 
-```powershell
-py -m pip install -r requirements.txt
-py .\prepare_data.py
-py .\server.py
-```
+### Community channels
 
-Open [http://localhost:5000](http://localhost:5000).
+Event channels persist messages in SQLite and refresh periodically in the
+browser. Access is enforced on the server:
 
-## Prepare map data
+- **Event participants:** available to joined participants and the organizer.
+- **Organizers only:** available only to the event owner.
+- **Restricted:** available only to participants explicitly granted access.
+- **Announcements-only:** organizers can post; participants can read.
 
-`prepare_data.py` downloads and converts the geographic data used by the frontend.
-Run it once before starting ORBIT:
+## Technology
 
-```bash
-python prepare_data.py
-```
+| Layer | Implementation |
+| --- | --- |
+| Backend | Python 3.10+ and Flask |
+| Frontend | Plain HTML, CSS, and JavaScript |
+| Globe and map | CesiumJS 1.127 |
+| Map imagery | OpenStreetMap tiles |
+| Persistence | SQLite (`orbit.db`) |
+| Authentication | Flask sessions and Werkzeug password hashes |
+| Uploads | Local `uploads/` directory with extension, size, and signature checks |
+| Dependencies | Flask only; browser assets load from configured CDNs |
 
-It downloads:
-
-1. World land, country borders, lakes, rivers, and populated places from Natural
-   Earth.
-2. Roads, buildings, waterways, coastline, parks, and rail data for each
-   supported city from OpenStreetMap through Overpass.
-3. The local D3 browser library used for geographic projections.
-
-The script creates the `data/maps` directory and `static/vendor/d3.min.js`.
-If the data is missing, the application displays a setup message instead of the
-interactive maps.
-
-## Start the application
-
-Start the Flask server from the project directory:
-
-```bash
-python server.py
-```
-
-The server listens on `127.0.0.1:5000` by default. Visit:
-
-- [ORBIT frontend](http://127.0.0.1:5000/)
-- [API status](http://127.0.0.1:5000/api/status)
-- [Event API](http://127.0.0.1:5000/api/events)
-
-Stop the server with `Ctrl+C`.
-
-## Use ORBIT
-
-### 1. Explore the Earth
-
-The opening view is an orthographic globe. You can:
-
-- Drag to rotate the globe.
-- Scroll or use a trackpad to zoom.
-- Select a highlighted city to travel into its local map.
-- See day/night shading based on the current UTC time.
-- See city lights on the night side.
-
-### 2. Explore a city
-
-After selecting a city, ORBIT flies from the globe into the matching city map.
-The city view includes:
-
-- Roads drawn by road hierarchy.
-- Water and coastline.
-- Parks and other green spaces.
-- Rail lines.
-- Building footprints.
-- Building extrusion at high zoom when height data is available.
-- Event markers for in-person and hybrid events.
-
-Use **Back to Earth** to return to the globe.
-
-### 3. Find events
-
-The city panel provides:
-
-- Text search across event title, venue, description, and category.
-- Category filters for Tech, Music, Art, Food, Sports, and Business.
-- A scrollable event list sorted by date and time.
-- Clickable event markers on the map.
-- A detail card for the selected event.
-
-Online events appear in the event list but do not have a map marker because they
-do not require a physical location.
-
-## Create an event
-
-1. Enter a city and open its city map.
-2. Select **Create event**.
-3. Enter a title, category, event type, date, and time.
-4. For an **in-person** or **hybrid** event, click the location map to place the
-   pin. Drag the pin to adjust it.
-5. Add the venue, address, and description.
-6. Select **Publish event**.
-
-The event is validated by Flask and appended to `events.json`. In-person and
-hybrid events must have valid latitude and longitude values. Online events do
-not require a map location.
-
-## Project structure
+## Project layout
 
 ```text
 .
-├── index.html             Frontend UI, styles, map classes, and application logic
-├── server.py              Flask server and event API
-├── prepare_data.py        Geographic data downloader and converter
-├── requirements.txt       Python dependencies
-├── events.json            Local event store, created or updated by the server
-├── data/
-│   └── maps/
-│       ├── world/         Natural Earth world GeoJSON files
-│       └── <city>/        OpenStreetMap city extracts
-└── static/
-    └── vendor/
-        └── d3.min.js      Local D3 library downloaded during preparation
+├── ORBIT_Community_Upgrade (1)/
+│   ├── index.html          Browser UI and client-side application logic
+│   ├── server.py           Flask application, routes, database setup, and auth
+│   ├── requirements.txt    Python dependencies
+│   ├── orbit.db            Local SQLite database (created/updated at runtime)
+│   └── uploads/            Event banners and documents (created at runtime)
+├── LICENSE
+├── .gitignore
+└── README.md
 ```
 
-## How the application works
+The application files are inside the `ORBIT_Community_Upgrade (1)` directory.
+Run all Python commands from that directory.
 
-### Frontend
+## Requirements
 
-`index.html` contains the complete browser application. It uses independent
-canvas map instances so the Earth view, city view, and event-location picker
-each maintain their own camera, markers, and interactions.
+- Python 3.10 or newer
+- Internet access when loading CesiumJS, OpenStreetMap tiles, and the Google
+  Fonts stylesheet used by the interface
+- A modern browser such as Chrome, Edge, or Firefox
 
-The main map components are:
+No Node.js, frontend build step, map API key, or separate database server is
+required.
 
-- **EarthMap:** Renders the globe, borders, water, rivers, populated places,
-  day/night shading, and city entry points.
-- **CityMap:** Renders the selected city's OSM-derived roads, buildings, water,
-  parks, rail, and event markers.
-- **LocationPickerMap:** Provides the map embedded in the Create event dialog.
-- **Transitions:** Animates the flight from Earth to a city and fades between
-  map views.
+## Quick start
 
-### Backend
+### Windows PowerShell
 
-`server.py` serves the frontend and local geographic files and exposes the
-event API. It uses a lock when reading or writing `events.json` so concurrent
-requests do not overwrite each other.
-
-## Data sources and licensing
-
-- **Natural Earth:** World geographic data; public domain.
-- **OpenStreetMap:** City map data; © OpenStreetMap contributors and available
-  under the Open Database License (ODbL).
-- **D3:** Distributed locally from the D3 project during data preparation.
-
-The application displays an attribution notice for Natural Earth and
-OpenStreetMap in the frontend.
-
-## API endpoints
-
-### `GET /api/status`
-
-Reports whether the world assets are ready and which city datasets exist:
-
-```json
-{
-  "world": true,
-  "cities": ["mumbai", "delhi", "bengaluru", "chennai"]
-}
+```powershell
+Set-Location ".\ORBIT_Community_Upgrade (1)"
+python -m pip install -r requirements.txt
+python server.py
 ```
 
-### `GET /api/events`
+If the `python` command is unavailable, use the Python launcher:
 
-Returns all events stored in `events.json`.
-
-### `POST /api/events`
-
-Creates an event from a JSON request. Required values include:
-
-- `title`
-- `city`
-- `category`
-- `mode`: `in-person`, `online`, or `hybrid`
-
-In-person and hybrid events also require numeric `lat` and `lng` values.
-
-## Refresh map data
-
-Refresh all world and city data:
-
-```bash
-python prepare_data.py
+```powershell
+py -m pip install -r requirements.txt
+py .\server.py
 ```
 
-Refresh only one city:
+### Windows Command Prompt
 
-```bash
-python prepare_data.py mumbai
-python prepare_data.py delhi
-python prepare_data.py bengaluru
-python prepare_data.py chennai
+```bat
+cd "ORBIT_Community_Upgrade (1)"
+python -m pip install -r requirements.txt
+python server.py
 ```
 
-The city extracts cover approximately 5.5 km by 5.5 km around each city centre.
-This area is controlled by `HALF` in `prepare_data.py`.
+Open [http://127.0.0.1:5000](http://127.0.0.1:5000) after the server starts.
+Stop the development server with `Ctrl+C`.
+
+On first launch, ORBIT automatically:
+
+1. Creates the SQLite schema in `orbit.db`.
+2. Creates `uploads/` for uploaded media.
+3. Generates `.orbit_secret` when `ORBIT_SECRET_KEY` is not configured.
+4. Seeds a small set of demonstration events when the database is empty.
+
+## Configuration
+
+ORBIT reads a `.env` file from the application directory when present. The
+most important setting is:
+
+```dotenv
+ORBIT_SECRET_KEY=replace-with-a-long-random-value
+```
+
+For local development, omitting the setting causes a random key to be saved in
+`.orbit_secret`. Set a persistent `ORBIT_SECRET_KEY` for any environment where
+sessions must survive restarts. Never commit `.env`, `.orbit_secret`, uploaded
+private files, or a production database containing personal data.
+
+## Using ORBIT
+
+### Explore events
+
+1. Open the local URL.
+2. Select **Mumbai**, **Delhi**, **Bengaluru**, or **Chennai** at the bottom of
+   the globe.
+3. Search by event or venue, or select a category chip.
+4. Select an event from the list or its map marker.
+5. Use **Earth** to return to the global view.
+
+Online events appear in the event list but do not have a physical map marker.
+Physical and hybrid events require valid latitude and longitude values.
+
+### Create an event
+
+1. Select **Sign in** and register or log in.
+2. Enter a city view and select **Host an event**.
+3. Provide the title, category, event type, start time, and optional end time.
+4. For an in-person or hybrid event, provide the venue coordinates. You can
+   copy coordinates from OpenStreetMap.
+5. Add the description, requirements, entry type, capacity, and optional
+   banner.
+6. Select **Create event**.
+
+Passwords must be at least 10 characters. Event titles are limited to 120
+characters, descriptions and requirements to 4,000 characters, and uploaded
+files to 12 MB.
+
+### Manage an event
+
+Open an event you own and select the organizer controls to access the dashboard.
+From there you can:
+
+- Update event details and status.
+- Upload or remove a banner.
+- Create and edit channels.
+- Add organizer contacts and choose which contact fields are public.
+- Review participants and update payment status.
+- Upload documents with public, participant, or restricted access.
+
+Payment is recorded manually. ORBIT does not process money or verify payments
+with a payment provider.
+
+### Join an event
+
+Sign in, open a published event, and select the join action. Free events are
+immediately marked as joined. Paid events receive a pending payment status
+until the organizer verifies them. Joining an event is required before a user
+can access participant channels or participant documents.
+
+## Data, migration, and backups
+
+The current application stores data in SQLite:
+
+- `orbit.db` contains users, events, memberships, channels, messages, contacts,
+  documents, and audit records.
+- `uploads/` contains event banners and uploaded documents.
+- `.orbit_secret` contains the automatically generated session-signing secret
+  when no environment variable is configured.
+
+Back up `orbit.db`, `uploads/`, and `.orbit_secret` together. Restoring only the
+database without the uploads directory can leave banner and document records
+pointing to missing files.
+
+Older ORBIT versions may have an `events.json` file. To migrate it, copy the
+file into the application directory **before the first launch**. The startup
+migration imports valid records into SQLite and preserves the original JSON.
+The first account created on a migrated local installation becomes the owner
+of legacy events that do not already have an owner. Demo events are not claimed
+by that account.
+
+## HTTP API
+
+The Flask server exposes JSON endpoints used by the frontend. The API is
+available at the same host and port as the web interface.
+
+| Method | Endpoint | Purpose | Auth |
+| --- | --- | --- | --- |
+| `GET` | `/api/health` | Report storage and map configuration | No |
+| `GET` | `/api/me` | Return the current user, if signed in | No |
+| `POST` | `/api/register` | Create an account and sign in | No |
+| `POST` | `/api/login` | Start a session | No |
+| `POST` | `/api/logout` | End the current session | No |
+| `GET` | `/api/events` | List published/cancelled events; optional `?city=` filter | No |
+| `GET` | `/api/events/<event_id>` | Read one event | No |
+| `POST` | `/api/events` | Create an event | User |
+| `PATCH` | `/api/events/<event_id>` | Update an owned event | Owner |
+| `POST` | `/api/events/<event_id>/join` | Join an event | User |
+| `GET` | `/api/my-events` | List events owned by the current user | User |
+| `GET` | `/api/events/<event_id>/participants` | List participants | Owner |
+| `PATCH` | `/api/events/<event_id>/participants/<user_id>` | Update payment status | Owner |
+| `POST` | `/api/events/<event_id>/channels` | Create a channel | Owner |
+| `PATCH` | `/api/channels/<channel_id>` | Update a channel | Owner |
+| `DELETE` | `/api/channels/<channel_id>` | Delete a channel | Owner |
+| `GET` | `/api/channels/<channel_id>/messages` | Read accessible messages | Member |
+| `POST` | `/api/channels/<channel_id>/messages` | Post an accessible message | Member |
+| `POST` | `/api/events/<event_id>/banner` | Upload a banner | Owner |
+| `POST` | `/api/events/<event_id>/documents` | Upload an event document | Owner |
+| `GET` | `/api/documents/<document_id>/download` | Download an authorized document | Eligible user |
+| `GET` | `/media/<filename>` | Serve a referenced event banner | No |
+
+Unauthorized requests return JSON errors with an appropriate HTTP status. The
+frontend sends session cookies with API requests.
 
 ## Troubleshooting
 
-### The browser shows “Map data not found”
+### Flask is missing
 
-Run the dependency installation and preparation steps, then restart Flask:
+Run the dependency installation from the application directory:
 
-```bash
+```powershell
 python -m pip install -r requirements.txt
-python prepare_data.py
-python server.py
 ```
 
 ### Port 5000 is already in use
 
-Stop the process using port 5000, or run the Flask app with a different port by
-changing the `port` value in the `app.run(...)` call in `server.py`. Then open
-the matching URL, for example `http://127.0.0.1:5001`.
+Stop the other local ORBIT process, or change the `port=5000` value in
+`server.py` and open the matching URL. The built-in server binds to
+`127.0.0.1` by default.
 
-### Map preparation fails
+### The globe or imagery is blank
 
-The preparation step needs internet access because it downloads Natural Earth,
-D3, and OpenStreetMap data. Retry later if an Overpass server is unavailable.
-The script tries more than one Overpass endpoint.
+Check internet access and the browser Developer Tools **Console** and
+**Network** tabs. CesiumJS and OpenStreetMap tiles are loaded remotely, so
+content blockers, offline mode, or tile-service availability can affect the
+map.
 
-### Changes to events do not appear
+### An upload is rejected
 
-Reload the page after publishing an event. Confirm that `events.json` is
-writable and that the Flask process is running from the project directory.
+Files must use an allowed image or document extension, must not exceed 12 MB,
+and must not match common executable/script signatures. Rename the file only
+after confirming it is a supported, non-executable document.
 
-## Known limitations
+### Events or uploads disappear
 
-- No terrain relief, clouds, or place and road labels are rendered.
-- Large water bodies represented only as OSM relations are not included;
-  coastline sea fill and closed water ways are supported.
-- Buildings without a height tag use a default height of 8 metres.
-- Geographic search is not implemented; search only filters loaded events.
-- Event storage is a local JSON file and is not intended for multi-user
-  production deployment.
+Confirm that the server is running from the application directory and that the
+process can write to `orbit.db` and `uploads/`. Restore those files together
+from a backup if the local data was moved.
+
+## Security and limitations
+
+- Use a strong, persistent `ORBIT_SECRET_KEY` outside local development.
+- The application uses Flask's built-in development server and is not hardened
+  for public deployment.
+- Registration is open and there is no email verification, password reset, or
+  administrator provisioning workflow.
+- The current version does not provide production CSRF protection, rate
+  limiting, HTTPS termination, centralized logging, or automated backups.
+- Paid-event status is manually verified; no payment is processed.
+- Chat uses periodic polling rather than WebSockets and returns a bounded recent
+  message history.
+- Organizer contacts are profile entries, not separate co-organizer accounts.
+- OpenStreetMap public tile servers have usage policies. Follow the
+  [OpenStreetMap tile usage policy](https://operations.osmfoundation.org/policies/tiles/)
+  and retain required attribution.
+- Uploaded files are stored locally. Use a dedicated object store, malware
+  scanning, access logging, and a retention policy before production use.
+
+## Development notes
+
+There is no frontend build pipeline. `index.html` contains the interface,
+styles, and browser logic, while `server.py` contains the Flask routes and
+database initialization. A basic health check is available at
+[`/api/health`](http://127.0.0.1:5000/api/health).
+
+For a more implementation-focused guide located beside the app files, see the
+[application README](<ORBIT_Community_Upgrade (1)/README.md>).
+
+## License and attribution
+
+See [LICENSE](LICENSE) for the repository license. Map imagery is provided by
+OpenStreetMap contributors. CesiumJS, Flask, Werkzeug, and the other referenced
+libraries remain under their respective licenses.
