@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ORBIT: events around the world</title>
+<style>
+:root{--bg:#02040a;--panel:rgba(9,12,18,.84);--line:rgba(255,255,255,.12);--tx:#e9edf4;--mu:#8e98ab;--ac:#ffb454}
+*{box-sizing:border-box}html,body{height:100%;margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+.map{position:fixed;inset:0}.map canvas{width:100%;height:100%;display:block;touch-action:none}
+#city{opacity:0;pointer-events:none;transition:opacity .7s}#city.on{opacity:1;pointer-events:auto}
+.glass{background:var(--panel);backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:14px}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:1px solid var(--line);border-radius:999px;padding:7px 14px}
+button:hover{border-color:var(--ac)}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+button.pri{background:var(--ac);color:#1a1100;border-color:var(--ac);font-weight:700}
+input,select,textarea{background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:10px;padding:8px 10px;width:100%}
+#brand{position:fixed;top:18px;left:22px;z-index:5;font-size:22px;font-weight:700;letter-spacing:.14em;pointer-events:none}
+#brand small{display:block;font-size:13px;font-weight:400;letter-spacing:0;color:var(--mu)}
+#world{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);z-index:5;display:flex;gap:10px;padding:10px;max-width:96vw;flex-wrap:wrap;justify-content:center}
+#world button{font-size:17px;padding:10px 20px}
+#panel{position:fixed;top:14px;left:14px;bottom:14px;width:380px;z-index:6;display:none;flex-direction:column;gap:10px;padding:14px}
+#panel.on{display:flex}
+.row{display:flex;gap:8px;align-items:center;justify-content:space-between}
+h2{margin:0;font-size:24px}
+#chips{display:flex;gap:6px;flex-wrap:wrap}#chips button{padding:4px 11px;font-size:13px}#chips button.on{background:var(--tx);color:#000}
+#list{overflow:auto;flex:1;display:flex;flex-direction:column;gap:6px}
+.ev{text-align:left;border-radius:12px;padding:10px 12px;width:100%}.ev.sel{border-color:var(--ac);background:rgba(255,180,84,.1)}
+.ev b{display:block}.ev span{color:var(--mu);font-size:13px}
+#quick{position:fixed;right:14px;bottom:14px;width:340px;max-width:calc(100vw - 28px);z-index:7;padding:16px;display:none}
+#quick.on{display:block}#quick h3{margin:0 0 4px;font-size:20px}#quick p{color:var(--mu);margin:6px 0}
+#modal,#setup{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);padding:14px}
+#modal.on,#setup.on{display:flex}
+.card{width:min(520px,100%);max-height:92vh;overflow:auto;padding:22px;display:flex;flex-direction:column;gap:10px}
+.card label{font-size:13px;color:var(--mu)}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#pickHost{position:relative;height:240px;border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+#setup code{color:var(--tx);background:rgba(255,255,255,.08);padding:1px 6px;border-radius:6px}
+#msg{color:#ff8f8f;min-height:20px;font-size:13px}
+#toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:40;padding:10px 16px;display:none}
+#load{position:fixed;inset:0;z-index:30;display:grid;place-items:center;background:var(--bg);color:var(--mu);transition:opacity .6s}
+#credit{position:fixed;right:10px;top:10px;z-index:4;font-size:11px;color:var(--mu)}
+@media(max-width:700px){#panel{top:auto;width:auto;right:14px;height:48vh}#quick{bottom:calc(48vh + 24px);right:14px;left:14px;width:auto}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="earth" class="map" aria-label="Interactive Earth. Drag to rotate, scroll to zoom."></div>
+<div id="city" class="map" aria-label="Interactive city map"></div>
+<div id="load">Loading Earth…</div>
+<div id="brand">ORBIT<small>Explore events across the world.</small></div>
+<div id="credit">Natural Earth, © OpenStreetMap contributors</div>
+<div id="toast" class="glass" role="status"></div>
+<div id="world" class="glass" role="group" aria-label="Choose a city"></div>
+
+<aside id="panel" class="glass" aria-label="City events">
+  <div class="row"><h2 id="cityName"></h2><button id="back">Back to Earth</button></div>
+  <input id="q" type="search" placeholder="Search ORBIT events" aria-label="Search ORBIT events">
+  <div id="chips"></div>
+  <div id="list" role="list"></div>
+  <button class="pri" id="add">Create event</button>
+</aside>
+<section id="quick" class="glass" aria-live="polite"></section>
+
+<div id="modal"><form class="card glass" id="form" autocomplete="off">
+  <div class="row"><h2>Create event</h2><button type="button" id="cancel">Close</button></div>
+  <label>Title<input name="title" required maxlength="120"></label>
+  <div class="grid2">
+    <label>Category<select name="category" id="catSel"></select></label>
+    <label>Type<select name="mode" id="modeSel"><option>in-person</option><option>online</option><option>hybrid</option></select></label>
+  </div>
+  <label>Date and time<input type="datetime-local" name="when" required></label>
+  <div id="venueBlock">
+    <label>Click the map to place the pin. Drag the pin to adjust it.</label>
+    <div id="pickHost"></div>
+    <label>Venue name<input name="venue"></label>
+    <label>Address<input name="address"></label>
+    <div class="grid2"><label>Latitude<input name="lat" type="number" step="any"></label><label>Longitude<input name="lng" type="number" step="any"></label></div>
+  </div>
+  <label>Description<textarea name="description" rows="3" maxlength="600"></textarea></label>
+  <div id="msg" role="alert"></div>
+  <button class="pri" type="submit">Publish event</button>
+</form></div>
+
+<div id="setup"><div class="card glass">
+  <h2>Map data not found</h2>
+  <p style="margin:0;color:var(--mu)">ORBIT draws Earth and the cities from open data stored on this computer. No API key is needed. Download it once (needs internet):</p>
+  <p><code>pip install -r requirements.txt</code><br><code>python prepare_data.py</code></p>
+  <p style="margin:0;color:var(--mu)">Then restart <code>python server.py</code> and reload this page.</p>
+</div></div>
+
+<script src="/static/vendor/d3.min.js" onerror="window.NOD3=1"></script>
+<script>
+const CITIES={Mumbai:[19.0760,72.8777],Delhi:[28.6139,77.2090],Bengaluru:[12.9716,77.5946],Chennai:[13.0827,80.2707]};
+const COLORS={Tech:'#4cc3ff',Music:'#ff6b9a',Art:'#b58cff',Food:'#ffb454',Sports:'#5be08c',Business:'#e9edf4'};
+const S={events:[],city:null,cat:'All',q:'',sel:null,earth:null,cityMap:null,picker:null,cache:{},st:{}};
+const $=id=>document.getElementById(id),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=w=>w?new Date(w).toLocaleString([], {dateStyle:'medium',timeStyle:'short'}):'';
+const load=u=>S.cache[u]||(S.cache[u]=fetch(u).then(r=>{if(!r.ok)throw Error(u);return r.json()}));
+function toast(t){const e=$('toast');e.textContent=t;e.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display='none',5000)}
+const ease=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+function tween(ms,fn){return new Promise(r=>{const t0=performance.now();(function f(n){const t=Math.min(1,(n-t0)/ms);fn(ease(t));t<1?requestAnimationFrame(f):r()})(t0)})}
+
+/* ---------- shared map base: each instance owns its canvas, camera and markers ---------- */
+class MapBase{
+  constructor(host){this.host=host;this.c=document.createElement('canvas');host.append(this.c);this.ctx=this.c.getContext('2d');
+    this.ro=new ResizeObserver(()=>this.resize());this.ro.observe(host);this.bind();this.w=host.clientWidth;this.h=host.clientHeight}
+  resize(){const r=this.host.getBoundingClientRect(),d=devicePixelRatio||1;if(!r.width)return;this.w=r.width;this.h=r.height;
+    this.c.width=r.width*d;this.c.height=r.height*d;this.ctx.setTransform(d,0,0,d,0,0);this.onResize?.();this.draw()}
+  request(){if(!this.raf)this.raf=requestAnimationFrame(()=>{this.raf=0;this.draw()})}
+  destroy(){this.ro.disconnect();cancelAnimationFrame(this.raf);this.c.remove()}
+  bind(){const c=this.c;let d=null;
+    c.onpointerdown=e=>{c.setPointerCapture(e.pointerId);d={x:e.offsetX,y:e.offsetY,mv:0,cap:this.grab?.(e.offsetX,e.offsetY)}};
+    c.onpointermove=e=>{if(!d){c.style.cursor=this.hit?.(e.offsetX,e.offsetY)?'pointer':'grab';return}
+      const dx=e.offsetX-d.x,dy=e.offsetY-d.y;d.mv+=Math.abs(dx)+Math.abs(dy);d.x=e.offsetX;d.y=e.offsetY;
+      d.cap?this.dragTo(e.offsetX,e.offsetY):this.pan(dx,dy);this.request()};
+    c.onpointerup=e=>{if(d&&d.mv<5)this.click(e.offsetX,e.offsetY);d=null};
+    c.onwheel=e=>{e.preventDefault();this.zoomBy(-e.deltaY,e.offsetX,e.offsetY);this.request()}}
+}
+
+/* ---------- EarthMap: Natural Earth data on an orthographic globe ---------- */
+class EarthMap extends MapBase{
+  constructor(host,W,cities,onCity){super(host);this.W=W;this.cities=cities;this.onCity=onCity;this.lon=75;this.lat=18;this.R=this.baseR();
+    this.proj=d3.geoOrthographic().clipAngle(90);this.path=d3.geoPath(this.proj,this.ctx);this.resize()}
+  baseR(){return Math.min(this.w,this.h)*.42}
+  sun(){const n=new Date(),d=(n-new Date(n.getUTCFullYear(),0,0))/864e5,dec=-23.44*Math.cos(2*Math.PI*(d+10)/365),h=n.getUTCHours()+n.getUTCMinutes()/60;
+    return [-(h-12)*15,dec]}
+  draw(){const {ctx,w,h,W,R}=this,p=this.path;this.proj.rotate([-this.lon,-this.lat]).scale(R).translate([w/2,h/2]);
+    ctx.clearRect(0,0,w,h);ctx.fillStyle='#02040a';ctx.fillRect(0,0,w,h);
+    let g=ctx.createRadialGradient(w/2,h/2,R*.97,w/2,h/2,R*1.13);g.addColorStop(0,'rgba(110,170,255,.6)');g.addColorStop(1,'rgba(110,170,255,0)');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(w/2,h/2,R*1.13,0,7);ctx.fill();
+    g=ctx.createRadialGradient(w/2-R*.35,h/2-R*.35,R*.1,w/2,h/2,R);g.addColorStop(0,'#17476f');g.addColorStop(1,'#071b31');
+    ctx.beginPath();p({type:'Sphere'});ctx.fillStyle=g;ctx.fill();
+    ctx.beginPath();p(W.land);ctx.fillStyle='#46603f';ctx.fill();
+    ctx.beginPath();p(W.lakes);ctx.fillStyle='#17476f';ctx.fill();
+    if(R>250){ctx.beginPath();p(W.rivers);ctx.strokeStyle='#2a6a9c';ctx.lineWidth=Math.min(2,R/900+.4);ctx.stroke()}
+    ctx.beginPath();p(W.countries);ctx.strokeStyle='rgba(255,255,255,.22)';ctx.lineWidth=.6;ctx.stroke();
+    const sun=this.sun(),anti=[sun[0]+180,-sun[1]];
+    ctx.beginPath();p(d3.geoCircle().center(anti).radius(90)());ctx.fillStyle='rgba(0,4,18,.62)';ctx.fill();
+    const vis=pt=>d3.geoDistance(pt,[this.lon,this.lat])<1.5;
+    for(const f of W.places.features){const q=f.properties.pop_max||0,c=f.geometry.coordinates;if(q<(R>1500?2e5:R>600?1e6:3e6)||!vis(c)||d3.geoDistance(c,anti)>1.5)continue;
+      const [x,y]=this.proj(c);ctx.fillStyle=`rgba(255,200,110,${Math.min(.95,.35+q/2e7)})`;ctx.beginPath();ctx.arc(x,y,Math.min(3,.8+q/6e6),0,7);ctx.fill()}
+    this.hits=[];ctx.font='600 13px system-ui';ctx.textAlign='left';
+    for(const [n,[la,ln]] of Object.entries(this.cities)){if(!vis([ln,la]))continue;const [x,y]=this.proj([ln,la]);this.hits.push({n,x,y});
+      ctx.strokeStyle='#ffb454';ctx.lineWidth=2;ctx.fillStyle='rgba(255,180,84,.25)';ctx.beginPath();ctx.arc(x,y,7,0,7);ctx.fill();ctx.stroke();
+      if(R<3000){ctx.fillStyle='#fff';ctx.fillText(n,x+12,y+4)}}}
+  hit(x,y){return this.hits?.find(m=>Math.hypot(m.x-x,m.y-y)<14)}
+  click(x,y){const m=this.hit(x,y);if(m)this.onCity(m.n)}
+  pan(dx,dy){const k=180/Math.PI/this.R;this.lon-=dx*k/Math.max(.2,Math.cos(this.lat*Math.PI/180));this.lat=Math.max(-85,Math.min(85,this.lat+dy*k))}
+  zoomBy(d){this.R=Math.max(this.baseR()*.6,Math.min(3e6,this.R*Math.exp(d*.0015)))}
+  async flyTo(lon,lat,R,ms){const i=d3.geoInterpolate([this.lon,this.lat],[lon,lat]),R0=this.R;
+    await tween(ms,t=>{[this.lon,this.lat]=i(t);this.R=R0*Math.pow(R/R0,t);this.draw()})}
+}
+
+/* ---------- CityMap: real OSM streets, water, parks and building footprints ---------- */
+const mercX=lon=>(lon+180)/360,mercY=lat=>(1-Math.log(Math.tan(Math.PI/4+lat*Math.PI/360))/Math.PI)/2;
+const ROADC=['#f0a868','#d9d3c4','#a9adb5','#7d838e','#4d535e','#3a3f48'],ROADW=[16,12,9,6.5,4.5,2.5];
+function pack(c){const o=new Float64Array(c.length*2);let a=1e9,b=1e9,e=-1e9,f=-1e9;
+  for(let i=0;i<c.length;i++){const x=mercX(c[i][0]),y=mercY(c[i][1]);o[2*i]=x;o[2*i+1]=y;if(x<a)a=x;if(x>e)e=x;if(y<b)b=y;if(y>f)f=y}
+  return {r:o,b:[a,b,e,f]}}
+class CityMap extends MapBase{
+  constructor(host,D,o){super(host);this.o=o;const L=this.L={};
+    for(const k of ['sea','water','parks'])L[k]=D[k].map(pack);
+    for(const k of ['waterways','rail'])L[k]=D[k].map(pack);
+    L.roads=D.roads.map(([c,l])=>({c,...pack(l)}));
+    L.bld=D.buildings.map(([h,r])=>({h,...pack(r)})).sort((a,b)=>a.b[1]-b.b[1]);
+    this.cx=mercX(o.lng);this.cy=mercY(o.lat);this.lat=o.lat;this.z=o.z;this.markers=[];this.selId=null;this.hits=[];this.resize()}
+  setMarkers(list,sel){this.markers=list;this.selId=sel;this.request()}
+  S(){return 256*2**this.z}
+  sx(x,S){return (x-this.cx)*S+this.w/2}sy(y,S){return (y-this.cy)*S+this.h/2}
+  vis(b,S){const x0=this.sx(b[0],S),x1=this.sx(b[2],S),y0=this.sy(b[1],S),y1=this.sy(b[3],S);return x1>-50&&x0<this.w+50&&y1>-120&&y0<this.h+50}
+  trace(r,S,dy=0){const {ctx}=this;for(let i=0;i<r.length;i+=2){const x=this.sx(r[i],S),y=this.sy(r[i+1],S)-dy;i?ctx.lineTo(x,y):ctx.moveTo(x,y)}}
+  fillSet(list,color,S){const {ctx}=this;ctx.beginPath();for(const p of list)if(this.vis(p.b,S)){this.trace(p.r,S);ctx.closePath()}ctx.fillStyle=color;ctx.fill()}
+  draw(){const {ctx,w,h,L}=this,S=this.S(),z=this.z,ppm=S/(40075016.686*Math.cos(this.lat*Math.PI/180));
+    ctx.fillStyle='#10151c';ctx.fillRect(0,0,w,h);
+    this.fillSet(L.parks,'#15301f',S);this.fillSet(L.water,'#0d3354',S);this.fillSet(L.sea,'#0a2d4d',S);
+    ctx.lineCap=ctx.lineJoin='round';
+    ctx.beginPath();for(const p of L.waterways)if(this.vis(p.b,S))this.trace(p.r,S);ctx.strokeStyle='#0d3354';ctx.lineWidth=Math.max(1,6*ppm);ctx.stroke();
+    ctx.setLineDash([6,5]);ctx.beginPath();for(const p of L.rail)if(this.vis(p.b,S))this.trace(p.r,S);ctx.strokeStyle='#5d6573';ctx.lineWidth=1.2;ctx.stroke();ctx.setLineDash([]);
+    for(const pass of [0,1])for(let c=5;c>=0;c--){if(c>=5&&z<15||c>=4&&z<13.2)continue;
+      ctx.beginPath();for(const p of L.roads)if(p.c===c&&this.vis(p.b,S))this.trace(p.r,S);
+      const wpx=Math.max(c<3?1.4:.7,ROADW[c]*ppm);ctx.strokeStyle=pass?ROADC[c]:'#06080c';ctx.lineWidth=pass?wpx:wpx+1.6;ctx.stroke()}
+    if(z>=13.5){const ext=z>=16,vb=L.bld.filter(b=>this.vis(b.b,S));const ex=ext&&vb.length<5000;
+      for(const b of vb){const hh=b.h||8,lift=ex?hh*ppm*1.1:0,col=hh<10?'#232b37':hh<25?'#2d3748':hh<60?'#3a4864':'#4b5b7e';
+        if(ex){ctx.fillStyle='#1a212c';const r=b.r;for(let i=0;i<r.length-2;i+=2){const x0=this.sx(r[i],S),y0=this.sy(r[i+1],S),x1=this.sx(r[i+2],S),y1=this.sy(r[i+3],S);
+          ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x1,y1);ctx.lineTo(x1,y1-lift);ctx.lineTo(x0,y0-lift);ctx.closePath();ctx.fill()}}
+        ctx.beginPath();this.trace(b.r,S,lift);ctx.closePath();ctx.fillStyle=col;ctx.fill();if(z>=15.5){ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=.6;ctx.stroke()}}}
+    this.hits=[];for(const m of this.markers){const x=this.sx(mercX(m.lng),S),y=this.sy(mercY(m.lat),S);this.hits.push({id:m.id,x,y});this.pin(x,y,m.color,m.id===this.selId)}
+    this.after?.(S)}
+  pin(x,y,color,sel){const {ctx}=this,r=sel?11:7;ctx.beginPath();ctx.arc(x,y,r+7,0,7);ctx.fillStyle=color+(sel?'55':'33');ctx.fill();
+    ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fillStyle=color;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle='#fff';ctx.stroke()}
+  hit(x,y){return this.hits.find(m=>Math.hypot(m.x-x,m.y-y)<14)}
+  click(x,y){const m=this.hit(x,y);if(m)this.o.onMarker?.(m.id)}
+  pan(dx,dy){const S=this.S();this.cx-=dx/S;this.cy-=dy/S}
+  zoomBy(d,x,y){const S=this.S(),px=(x-this.w/2)/S+this.cx,py=(y-this.h/2)/S+this.cy;this.z=Math.max(11,Math.min(18.5,this.z+d*.002));
+    const S2=this.S();this.cx=px-(x-this.w/2)/S2;this.cy=py-(y-this.h/2)/S2}
+  async flyTo(lng,lat,z,ms){const x0=this.cx,y0=this.cy,z0=this.z,x1=mercX(lng),y1=mercY(lat);this.lat=lat;
+    await tween(ms,t=>{this.cx=x0+(x1-x0)*t;this.cy=y0+(y1-y0)*t;this.z=z0+(z-z0)*t;this.draw()})}
+}
+
+/* ---------- LocationPickerMap: its own CityMap instance with a draggable pin ---------- */
+class LocationPickerMap extends CityMap{
+  setPoint(lat,lng,emit){this.pt=isFinite(lat)&&isFinite(lng)?{lat,lng}:null;this.request();if(emit&&this.pt)this.o.onPick(lat,lng)}
+  after(S){if(this.pt)this.pin(this.sx(mercX(this.pt.lng),S),this.sy(mercY(this.pt.lat),S),'#ff3b3b',true)}
+  fromXY(x,y){const S=this.S(),my=(y-this.h/2)/S+this.cy,mx=(x-this.w/2)/S+this.cx;
+    return {lng:mx*360-180,lat:Math.atan(Math.sinh(Math.PI*(1-2*my)))*180/Math.PI}}
+  grab(x,y){if(!this.pt)return false;const S=this.S();return Math.hypot(this.sx(mercX(this.pt.lng),S)-x,this.sy(mercY(this.pt.lat),S)-y)<16}
+  dragTo(x,y){const p=this.fromXY(x,y);this.setPoint(p.lat,p.lng,true)}
+  hit(x,y){return this.grab(x,y)}
+  click(x,y){const p=this.fromXY(x,y);this.setPoint(p.lat,p.lng,true)}
+}
+
+/* ---------- ORBIT app: events, panel and transitions ---------- */
+const key=c=>c.toLowerCase();
+function visible(){const q=S.q.toLowerCase();
+  return S.events.filter(e=>e.city===S.city&&(S.cat==='All'||e.category===S.cat)&&(!q||(e.title+e.venue+e.description+e.category).toLowerCase().includes(q))).sort((a,b)=>a.when.localeCompare(b.when))}
+function render(){const vis=visible();
+  S.cityMap?.setMarkers(vis.filter(e=>e.mode!=='online'&&e.lat!=null).map(e=>({id:e.id,lat:e.lat,lng:e.lng,color:COLORS[e.category]||'#ffffff'})),S.sel);
+  $('list').innerHTML=vis.length?'':'<span style="color:var(--mu)">No events match. Clear the search or create one.</span>';
+  for(const e of vis){const b=document.createElement('button');b.className='ev'+(e.id===S.sel?' sel':'');b.setAttribute('role','listitem');
+    b.innerHTML=`<b>${esc(e.title)}</b><span>${esc(e.category)}, ${esc(e.mode==='online'?'Online':e.venue)}, ${esc(fmt(e.when))}</span>`;b.onclick=()=>select(e.id,true);$('list').append(b)}}
+function select(id,go){S.sel=id;const e=S.events.find(x=>x.id===id);render();if(!e)return;
+  $('quick').innerHTML=`<div class="row"><h3>${esc(e.title)}</h3><button id="qx" aria-label="Close">×</button></div>
+   <span style="color:${COLORS[e.category]}">${esc(e.category)}, ${esc(e.mode)}</span><p>${esc(fmt(e.when))}</p>
+   <p>${esc(e.mode==='online'?'Online event':e.venue+', '+e.address)}</p><p>${esc(e.description)}</p>`;
+  $('quick').classList.add('on');$('qx').onclick=()=>{S.sel=null;$('quick').classList.remove('on');render()};
+  if(go&&e.lat!=null)S.cityMap?.flyTo(e.lng,e.lat,17,1600)}
+async function enter(city){
+  if(S.busy)return;if(!S.st.cities.includes(key(city)))return toast(`No map data for ${city}. Run: python prepare_data.py ${key(city)}`);
+  S.busy=true;S.city=city;$('world').style.display='none';$('cityName').textContent=city;const [la,ln]=CITIES[city];
+  const dp=load(`/data/maps/${key(city)}/city.json`);
+  try{await S.earth.flyTo(ln,la,8e5,3400);const D=await dp;
+    S.cityMap=new CityMap($('city'),D,{lng:ln,lat:la,z:14.3,onMarker:id=>select(id,true)});
+    $('city').classList.add('on');await sleep(750);$('panel').classList.add('on');render();await S.cityMap.flyTo(ln,la,15.4,1800)}
+  catch(e){toast('Could not load the city map data.');S.city=null;$('world').style.display='flex'}
+  S.busy=false}
+async function toWorld(){if(S.busy)return;S.busy=true;$('panel').classList.remove('on');$('quick').classList.remove('on');
+  $('city').classList.remove('on');await sleep(750);S.cityMap?.destroy();S.cityMap=null;S.city=null;S.sel=null;
+  await S.earth.flyTo(75,18,S.earth.baseR(),3400);$('world').style.display='flex';S.busy=false}
+function closeModal(){$('modal').classList.remove('on');S.picker?.destroy();S.picker=null}
+async function openModal(){$('msg').textContent='';$('modal').classList.add('on');const f=$('form'),[la,ln]=CITIES[S.city];
+  const D=await load(`/data/maps/${key(S.city)}/city.json`);if(S.picker)S.picker.destroy();
+  S.picker=new LocationPickerMap($('pickHost'),D,{lng:ln,lat:la,z:14.5,onPick:(a,b)=>{f.lat.value=a.toFixed(6);f.lng.value=b.toFixed(6)}});
+  if(f.lat.value)S.picker.setPoint(+f.lat.value,+f.lng.value)}
+function ui(){
+  const w=$('world');for(const c in CITIES){const b=document.createElement('button');b.textContent=c;b.onclick=()=>enter(c);w.append(b)}
+  const cats=['All',...Object.keys(COLORS)];
+  cats.forEach(c=>{const b=document.createElement('button');b.textContent=c;if(c==='All')b.className='on';
+    b.onclick=()=>{S.cat=c;[...$('chips').children].forEach(x=>x.classList.toggle('on',x===b));render()};$('chips').append(b)});
+  $('catSel').innerHTML=cats.slice(1).map(c=>`<option>${c}</option>`).join('');
+  $('q').oninput=e=>{S.q=e.target.value;render()};$('back').onclick=toWorld;$('add').onclick=openModal;$('cancel').onclick=closeModal;
+  const f=$('form');f.lat.oninput=f.lng.oninput=()=>S.picker?.setPoint(parseFloat(f.lat.value),parseFloat(f.lng.value));
+  $('modeSel').onchange=()=>{$('venueBlock').style.display=$('modeSel').value==='online'?'none':'block'};
+  f.onsubmit=async ev=>{ev.preventDefault();
+    const body={city:S.city,title:f.title.value,category:f.category.value,mode:f.mode.value,when:f.when.value,venue:f.venue.value,address:f.address.value,lat:f.lat.value,lng:f.lng.value,description:f.description.value};
+    const r=await fetch('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();if(!r.ok){$('msg').textContent=d.error;return}
+    S.events.push(d);closeModal();f.reset();$('venueBlock').style.display='block';S.cat='All';S.q='';$('q').value='';
+    [...$('chips').children].forEach((x,i)=>x.classList.toggle('on',i===0));select(d.id,true)};
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+}
+function setup(){$('setup').classList.add('on');$('load').style.display='none'}
+async function boot(){
+  S.st=await (await fetch('/api/status')).json();S.events=await (await fetch('/api/events')).json();
+  if(!S.st.world||window.NOD3||!window.d3)return setup();
+  try{const [land,countries,lakes,rivers,places]=await Promise.all(['land','countries','lakes','rivers','places'].map(n=>load(`/data/maps/world/${n}.json`)));
+    S.earth=new EarthMap($('earth'),{land,countries,lakes,rivers,places},CITIES,enter)}catch{return setup()}
+  ui();$('load').style.opacity=0;setTimeout(()=>$('load').style.display='none',650)}
+boot();
+</script>
+</body>
+</html>
